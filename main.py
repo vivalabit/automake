@@ -1,6 +1,7 @@
 import json
 import math
 import re
+import textwrap
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -287,7 +288,156 @@ def resize_and_crop_vertical(clip: Any, width: int, height: int) -> Any:
     )
 
 
-def prepare_scene_clip(scene: dict[str, Any], clips_dir: Path, width: int, height: int) -> Any:
+def get_caption_font(size: int) -> Any:
+    try:
+        from PIL import ImageFont
+    except ImportError as error:
+        raise ProjectValidationError(
+            "Pillow is not installed. Run: python3 -m pip install -r requirements.txt"
+        ) from error
+
+    font_paths = [
+        "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+        "/Library/Fonts/Arial Unicode.ttf",
+        "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
+        "/System/Library/Fonts/Helvetica.ttc",
+    ]
+
+    for font_path in font_paths:
+        if Path(font_path).is_file():
+            return ImageFont.truetype(font_path, size=size)
+
+    return ImageFont.load_default()
+
+
+def measure_text(draw: Any, text: str, font: Any, stroke_width: int = 0) -> tuple[int, int]:
+    bbox = draw.textbbox((0, 0), text, font=font, stroke_width=stroke_width)
+    return bbox[2] - bbox[0], bbox[3] - bbox[1]
+
+
+def wrap_caption_text(draw: Any, text: str, font: Any, max_width: int) -> list[str]:
+    words = text.split()
+    if not words:
+        return [""]
+
+    lines = []
+    current_line = words[0]
+
+    for word in words[1:]:
+        candidate = f"{current_line} {word}"
+        candidate_width, _ = measure_text(draw, candidate, font)
+        if candidate_width <= max_width:
+            current_line = candidate
+        else:
+            lines.append(current_line)
+            current_line = word
+
+    lines.append(current_line)
+
+    wrapped_lines = []
+    for line in lines:
+        line_width, _ = measure_text(draw, line, font)
+        if line_width <= max_width:
+            wrapped_lines.append(line)
+            continue
+
+        average_char_width = max(measure_text(draw, "А", font)[0], 1)
+        max_chars = max(max_width // average_char_width, 8)
+        wrapped_lines.extend(textwrap.wrap(line, width=max_chars) or [line])
+
+    return wrapped_lines
+
+
+def create_caption_image(text: str, width: int, height: int) -> Any:
+    try:
+        import numpy as np
+        from PIL import Image, ImageDraw, ImageFilter
+    except ImportError as error:
+        raise ProjectValidationError(
+            "Pillow and NumPy are required. Run: python3 -m pip install -r requirements.txt"
+        ) from error
+
+    image = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    shadow = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(image)
+    shadow_draw = ImageDraw.Draw(shadow)
+
+    font_size = max(width // 14, 58)
+    font = get_caption_font(font_size)
+    horizontal_padding = width // 12
+    max_text_width = width - horizontal_padding * 2
+    lines = wrap_caption_text(draw, text, font, max_text_width)
+
+    max_lines = 4
+    if len(lines) > max_lines:
+        lines = lines[:max_lines]
+        lines[-1] = lines[-1].rstrip(".,;:") + "..."
+
+    stroke_width = max(font_size // 18, 3)
+    line_spacing = font_size // 4
+    line_sizes = [measure_text(draw, line, font, stroke_width) for line in lines]
+    text_block_width = max((line_width for line_width, _ in line_sizes), default=0)
+    text_block_height = sum(line_height for _, line_height in line_sizes)
+    text_block_height += line_spacing * max(len(lines) - 1, 0)
+
+    box_padding_x = width // 18
+    box_padding_y = font_size // 2
+    box_width = min(width - horizontal_padding, text_block_width + box_padding_x * 2)
+    box_height = text_block_height + box_padding_y * 2
+    box_x = (width - box_width) // 2
+    box_y = int(height * 0.62)
+    box_y = min(box_y, height - box_height - height // 12)
+    box_radius = 28
+
+    box = (box_x, box_y, box_x + box_width, box_y + box_height)
+    shadow_draw.rounded_rectangle(
+        (box_x + 8, box_y + 10, box_x + box_width + 8, box_y + box_height + 10),
+        radius=box_radius,
+        fill=(0, 0, 0, 130),
+    )
+    shadow = shadow.filter(ImageFilter.GaussianBlur(radius=10))
+    image = Image.alpha_composite(shadow, image)
+    draw = ImageDraw.Draw(image)
+    draw.rounded_rectangle(box, radius=box_radius, fill=(0, 0, 0, 170))
+
+    current_y = box_y + box_padding_y
+    for line, (line_width, line_height) in zip(lines, line_sizes):
+        line_x = (width - line_width) // 2
+        draw.text(
+            (line_x, current_y),
+            line,
+            font=font,
+            fill=(255, 255, 255, 255),
+            stroke_width=stroke_width,
+            stroke_fill=(0, 0, 0, 230),
+        )
+        current_y += line_height + line_spacing
+
+    return np.array(image)
+
+
+def add_scene_caption(clip: Any, text: str, width: int, height: int, duration: int) -> Any:
+    try:
+        from moviepy import CompositeVideoClip, ImageClip
+    except ImportError as error:
+        raise ProjectValidationError(
+            "MoviePy is not installed. Run: python3 -m pip install -r requirements.txt"
+        ) from error
+
+    caption_clip = ImageClip(
+        create_caption_image(text, width, height),
+        transparent=True,
+        duration=duration,
+    )
+    return CompositeVideoClip([clip, caption_clip], size=(width, height)).with_duration(duration)
+
+
+def prepare_scene_clip(
+    scene: dict[str, Any],
+    clips_dir: Path,
+    width: int,
+    height: int,
+) -> Any:
     try:
         from moviepy import VideoFileClip, vfx
     except ImportError as error:
@@ -297,10 +447,13 @@ def prepare_scene_clip(scene: dict[str, Any], clips_dir: Path, width: int, heigh
 
     clip_name = scene.get("clip")
     duration = scene.get("duration")
+    text = scene.get("text")
     if not isinstance(clip_name, str) or not clip_name:
         raise ProjectValidationError("Scene clip must be a non-empty string.")
     if not isinstance(duration, int) or duration <= 0:
         raise ProjectValidationError("Scene duration must be a positive integer.")
+    if not isinstance(text, str) or not text:
+        raise ProjectValidationError("Scene text must be a non-empty string.")
 
     clip_path = clips_dir / clip_name
     if not clip_path.is_file():
@@ -317,7 +470,8 @@ def prepare_scene_clip(scene: dict[str, Any], clips_dir: Path, width: int, heigh
         scene_clip = source_clip.subclipped(0, duration)
 
     scene_clip = scene_clip.with_duration(duration)
-    return resize_and_crop_vertical(scene_clip, width, height)
+    scene_clip = resize_and_crop_vertical(scene_clip, width, height)
+    return add_scene_caption(scene_clip, text, width, height, duration)
 
 
 def assemble_video(scenes_data: dict[str, Any], config: dict[str, Any], paths: dict[str, Path]) -> Path:
