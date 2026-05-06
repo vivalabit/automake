@@ -13,6 +13,7 @@ output/
 scripts/
 main.py
 config.json
+requirements.txt
 .env.example
 .gitignore
 README.md
@@ -21,13 +22,18 @@ README.md
 ## Getting Started
 
 1. Copy `.env.example` to `.env` and fill in required values.
-2. Add a text plan to `input/plan.txt`.
-3. Add source clips to `assets/clips/`.
-4. Add background music to `assets/music/`.
+2. Install dependencies:
+
+```bash
+python3 -m pip install -r requirements.txt
+```
+
+3. Add a text plan to `input/plan.txt`.
+4. Add source `.mp4` clips to `assets/clips/`.
 5. Run:
 
 ```bash
-python main.py
+python3 main.py
 ```
 
-Generated files will be written to `output/` and `scripts/`.
+Generated files will be written to `scripts/` and `output/final.mp4`.

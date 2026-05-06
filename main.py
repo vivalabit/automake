@@ -1,4 +1,5 @@
 import json
+import math
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -273,6 +274,99 @@ def save_scenes(scenes_data: dict[str, Any], scripts_dir: Path) -> Path:
     return scenes_path
 
 
+def resize_and_crop_vertical(clip: Any, width: int, height: int) -> Any:
+    scale = max(width / clip.w, height / clip.h)
+    resized_width = math.ceil(clip.w * scale)
+    resized_height = math.ceil(clip.h * scale)
+
+    return clip.resized(new_size=(resized_width, resized_height)).cropped(
+        x_center=resized_width // 2,
+        y_center=resized_height // 2,
+        width=width,
+        height=height,
+    )
+
+
+def prepare_scene_clip(scene: dict[str, Any], clips_dir: Path, width: int, height: int) -> Any:
+    try:
+        from moviepy import VideoFileClip, vfx
+    except ImportError as error:
+        raise ProjectValidationError(
+            "MoviePy is not installed. Run: python3 -m pip install -r requirements.txt"
+        ) from error
+
+    clip_name = scene.get("clip")
+    duration = scene.get("duration")
+    if not isinstance(clip_name, str) or not clip_name:
+        raise ProjectValidationError("Scene clip must be a non-empty string.")
+    if not isinstance(duration, int) or duration <= 0:
+        raise ProjectValidationError("Scene duration must be a positive integer.")
+
+    clip_path = clips_dir / clip_name
+    if not clip_path.is_file():
+        raise ProjectValidationError(f"Scene clip not found: {clip_path}")
+
+    source_clip = VideoFileClip(str(clip_path))
+    if source_clip.duration is None or source_clip.duration <= 0:
+        source_clip.close()
+        raise ProjectValidationError(f"Scene clip has invalid duration: {clip_path}")
+
+    if source_clip.duration < duration:
+        scene_clip = source_clip.with_effects([vfx.Loop(duration=duration)])
+    else:
+        scene_clip = source_clip.subclipped(0, duration)
+
+    scene_clip = scene_clip.with_duration(duration)
+    return resize_and_crop_vertical(scene_clip, width, height)
+
+
+def assemble_video(scenes_data: dict[str, Any], config: dict[str, Any], paths: dict[str, Path]) -> Path:
+    try:
+        from moviepy import concatenate_videoclips
+    except ImportError as error:
+        raise ProjectValidationError(
+            "MoviePy is not installed. Run: python3 -m pip install -r requirements.txt"
+        ) from error
+
+    video_config = require_config_section(config, "video")
+    width = int(video_config.get("width", 1080))
+    height = int(video_config.get("height", 1920))
+    fps = int(video_config.get("fps", 30))
+    output_filename = str(video_config.get("output_filename", "final.mp4"))
+    output_path = paths["output_dir"] / output_filename
+
+    scenes = scenes_data.get("scenes")
+    if not isinstance(scenes, list) or not scenes:
+        raise ProjectValidationError("No scenes available for video assembly.")
+
+    scene_clips = []
+    final_clip = None
+    try:
+        scene_clips = [
+            prepare_scene_clip(scene, paths["clips_dir"], width, height)
+            for scene in scenes
+        ]
+        final_clip = concatenate_videoclips(scene_clips, method="compose")
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        final_clip.write_videofile(
+            str(output_path),
+            fps=fps,
+            codec="libx264",
+            audio=False,
+            preset="medium",
+            threads=4,
+            logger=None,
+            pixel_format="yuv420p",
+        )
+    finally:
+        if final_clip is not None:
+            final_clip.close()
+        for clip in scene_clips:
+            clip.close()
+
+    return output_path
+
+
 def main() -> None:
     project_root = Path(__file__).resolve().parent
     config_path = project_root / "config.json"
@@ -283,10 +377,12 @@ def main() -> None:
         plan = load_input_plan(paths["input_plan"])
         video_plan = parse_video_plan(plan, config)
         script_path = save_script(generate_script(video_plan), paths["scripts_dir"])
+        scenes_data = generate_scenes(video_plan, paths["clips_dir"])
         scenes_path = save_scenes(
-            generate_scenes(video_plan, paths["clips_dir"]),
+            scenes_data,
             paths["scripts_dir"],
         )
+        output_path = assemble_video(scenes_data, config, paths)
     except ProjectValidationError as error:
         print(f"Validation error: {error}")
         return
@@ -298,6 +394,7 @@ def main() -> None:
     print(f"Duration: {video_plan.duration_seconds} seconds")
     print(f"Script file: {script_path}")
     print(f"Scenes file: {scenes_path}")
+    print(f"Video file: {output_path}")
     print(f"Config file: {config_path}")
     print(f"Output directory: {paths['output_dir']}")
 
