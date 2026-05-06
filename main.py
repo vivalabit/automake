@@ -432,6 +432,38 @@ def add_scene_caption(clip: Any, text: str, width: int, height: int, duration: i
     return CompositeVideoClip([clip, caption_clip], size=(width, height)).with_duration(duration)
 
 
+def get_background_music_path(music_dir: Path) -> Path | None:
+    preferred_music = music_dir / "music.mp3"
+    if preferred_music.is_file():
+        return preferred_music
+
+    music_files = sorted(
+        path for path in music_dir.iterdir() if path.is_file() and path.suffix.lower() == ".mp3"
+    )
+    return music_files[0] if music_files else None
+
+
+def build_background_music(music_path: Path, duration: float, volume: float) -> Any:
+    try:
+        from moviepy import AudioFileClip, afx
+    except ImportError as error:
+        raise ProjectValidationError(
+            "MoviePy is not installed. Run: python3 -m pip install -r requirements.txt"
+        ) from error
+
+    music = AudioFileClip(str(music_path))
+    if music.duration is None or music.duration <= 0:
+        music.close()
+        raise ProjectValidationError(f"Music file has invalid duration: {music_path}")
+
+    if music.duration < duration:
+        music = music.with_effects([afx.AudioLoop(duration=duration)])
+    else:
+        music = music.subclipped(0, duration)
+
+    return music.with_duration(duration).with_effects([afx.MultiplyVolume(volume)])
+
+
 def prepare_scene_clip(
     scene: dict[str, Any],
     clips_dir: Path,
@@ -488,6 +520,7 @@ def assemble_video(scenes_data: dict[str, Any], config: dict[str, Any], paths: d
     fps = int(video_config.get("fps", 30))
     output_filename = str(video_config.get("output_filename", "final.mp4"))
     output_path = paths["output_dir"] / output_filename
+    music_volume = float(video_config.get("music_volume", 0.18))
 
     scenes = scenes_data.get("scenes")
     if not isinstance(scenes, list) or not scenes:
@@ -495,18 +528,29 @@ def assemble_video(scenes_data: dict[str, Any], config: dict[str, Any], paths: d
 
     scene_clips = []
     final_clip = None
+    background_music = None
     try:
         scene_clips = [
             prepare_scene_clip(scene, paths["clips_dir"], width, height)
             for scene in scenes
         ]
         final_clip = concatenate_videoclips(scene_clips, method="compose")
+        music_path = get_background_music_path(paths["music_dir"])
+        if music_path is not None:
+            background_music = build_background_music(
+                music_path,
+                final_clip.duration,
+                music_volume,
+            )
+            final_clip = final_clip.with_audio(background_music)
+
         output_path.parent.mkdir(parents=True, exist_ok=True)
         final_clip.write_videofile(
             str(output_path),
             fps=fps,
             codec="libx264",
-            audio=False,
+            audio=background_music is not None,
+            audio_codec="aac" if background_music is not None else None,
             preset="medium",
             threads=4,
             logger=None,
@@ -515,6 +559,8 @@ def assemble_video(scenes_data: dict[str, Any], config: dict[str, Any], paths: d
     finally:
         if final_clip is not None:
             final_clip.close()
+        if background_music is not None:
+            background_music.close()
         for clip in scene_clips:
             clip.close()
 

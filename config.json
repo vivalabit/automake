@@ -5,6 +5,7 @@
     "min_duration_seconds": 15,
     "max_duration_seconds": 30,
     "fps": 30,
+    "music_volume": 0.18,
     "output_filename": "final.mp4"
   },
   "paths": {
