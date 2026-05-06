@@ -1,0 +1,27 @@
+plan.md
+
+# Environment
+.env
+.venv/
+venv/
+
+# Python
+__pycache__/
+*.py[cod]
+
+# Local IDE files
+.idea/
+
+# Generated media and runtime outputs
+output/*
+!output/.gitkeep
+scripts/*
+!scripts/.gitkeep
+
+# User-provided source media
+input/*
+!input/.gitkeep
+assets/clips/*
+!assets/clips/.gitkeep
+assets/music/*
+!assets/music/.gitkeep

@@ -1,0 +1,17 @@
+{
+  "video": {
+    "width": 1080,
+    "height": 1920,
+    "min_duration_seconds": 15,
+    "max_duration_seconds": 30,
+    "fps": 30,
+    "output_filename": "final.mp4"
+  },
+  "paths": {
+    "input_plan": "input/plan.txt",
+    "clips_dir": "assets/clips",
+    "music_dir": "assets/music",
+    "output_dir": "output",
+    "scripts_dir": "scripts"
+  }
+}
