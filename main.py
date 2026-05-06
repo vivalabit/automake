@@ -177,13 +177,11 @@ def save_script(script_text: str, scripts_dir: Path) -> Path:
 
 
 def get_clip_names(clips_dir: Path) -> list[str]:
-    supported_extensions = {".mp4", ".mov", ".m4v", ".webm"}
-    clip_names = [
+    return [
         path.name
         for path in sorted(clips_dir.iterdir())
-        if path.is_file() and path.suffix.lower() in supported_extensions
+        if path.is_file() and path.suffix.lower() == ".mp4"
     ]
-    return clip_names
 
 
 def split_duration(total_duration: int, scene_count: int) -> list[int]:
@@ -235,10 +233,14 @@ def generate_scenes(video_plan: VideoPlan, clips_dir: Path) -> dict[str, Any]:
     durations = split_duration(video_plan.duration_seconds, scene_count)
     scene_texts = build_scene_texts(video_plan, scene_count)
     clip_names = get_clip_names(clips_dir)
+    if not clip_names:
+        raise ProjectValidationError(
+            f"No .mp4 clips found in {clips_dir}. Add at least one source clip."
+        )
 
     scenes = []
     for index, duration in enumerate(durations):
-        clip = clip_names[index % len(clip_names)] if clip_names else f"clip_{index + 1}.mp4"
+        clip = clip_names[index % len(clip_names)]
         scene = Scene(
             number=index + 1,
             duration=duration,
