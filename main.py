@@ -17,6 +17,14 @@ class VideoPlan:
     goal: str
 
 
+@dataclass(frozen=True)
+class Scene:
+    number: int
+    duration: int
+    text: str
+    clip: str
+
+
 def load_config(config_path: Path) -> dict[str, Any]:
     if not config_path.is_file():
         raise ProjectValidationError(f"Missing config file: {config_path}")
@@ -168,6 +176,101 @@ def save_script(script_text: str, scripts_dir: Path) -> Path:
     return script_path
 
 
+def get_clip_names(clips_dir: Path) -> list[str]:
+    supported_extensions = {".mp4", ".mov", ".m4v", ".webm"}
+    clip_names = [
+        path.name
+        for path in sorted(clips_dir.iterdir())
+        if path.is_file() and path.suffix.lower() in supported_extensions
+    ]
+    return clip_names
+
+
+def split_duration(total_duration: int, scene_count: int) -> list[int]:
+    base_duration = total_duration // scene_count
+    remainder = total_duration % scene_count
+
+    return [
+        base_duration + (1 if index < remainder else 0)
+        for index in range(scene_count)
+    ]
+
+
+def determine_scene_count(video_plan: VideoPlan) -> int:
+    if video_plan.duration_seconds <= 18:
+        return 3
+    if video_plan.duration_seconds <= 24:
+        return 4
+    return 5
+
+
+def build_scene_texts(video_plan: VideoPlan, scene_count: int) -> list[str]:
+    scene_templates = [
+        f"{video_plan.topic}: начни с главной проблемы или выгоды.",
+        "Покажи, почему это важно для зрителя прямо сейчас.",
+        "Дай первый конкретный пункт без длинного вступления.",
+        "Добавь пример, который легко понять с одного взгляда.",
+        f"Заверши действием: {video_plan.goal}.",
+    ]
+
+    if scene_count == 3:
+        return [
+            scene_templates[0],
+            f"{scene_templates[2]} {scene_templates[3]}",
+            scene_templates[4],
+        ]
+    if scene_count == 4:
+        return [
+            scene_templates[0],
+            scene_templates[1],
+            f"{scene_templates[2]} {scene_templates[3]}",
+            scene_templates[4],
+        ]
+
+    return scene_templates
+
+
+def generate_scenes(video_plan: VideoPlan, clips_dir: Path) -> dict[str, Any]:
+    scene_count = determine_scene_count(video_plan)
+    durations = split_duration(video_plan.duration_seconds, scene_count)
+    scene_texts = build_scene_texts(video_plan, scene_count)
+    clip_names = get_clip_names(clips_dir)
+
+    scenes = []
+    for index, duration in enumerate(durations):
+        clip = clip_names[index % len(clip_names)] if clip_names else f"clip_{index + 1}.mp4"
+        scene = Scene(
+            number=index + 1,
+            duration=duration,
+            text=scene_texts[index],
+            clip=clip,
+        )
+        scenes.append(
+            {
+                "number": scene.number,
+                "duration": scene.duration,
+                "text": scene.text,
+                "clip": scene.clip,
+            }
+        )
+
+    return {
+        "title": video_plan.topic,
+        "duration": video_plan.duration_seconds,
+        "format": "vertical",
+        "scenes": scenes,
+    }
+
+
+def save_scenes(scenes_data: dict[str, Any], scripts_dir: Path) -> Path:
+    scenes_path = scripts_dir / "scenes.json"
+    scenes_path.write_text(
+        json.dumps(scenes_data, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    return scenes_path
+
+
 def main() -> None:
     project_root = Path(__file__).resolve().parent
     config_path = project_root / "config.json"
@@ -178,6 +281,10 @@ def main() -> None:
         plan = load_input_plan(paths["input_plan"])
         video_plan = parse_video_plan(plan, config)
         script_path = save_script(generate_script(video_plan), paths["scripts_dir"])
+        scenes_path = save_scenes(
+            generate_scenes(video_plan, paths["clips_dir"]),
+            paths["scripts_dir"],
+        )
     except ProjectValidationError as error:
         print(f"Validation error: {error}")
         return
@@ -188,6 +295,7 @@ def main() -> None:
     print(f"Topic: {video_plan.topic}")
     print(f"Duration: {video_plan.duration_seconds} seconds")
     print(f"Script file: {script_path}")
+    print(f"Scenes file: {scenes_path}")
     print(f"Config file: {config_path}")
     print(f"Output directory: {paths['output_dir']}")
 
