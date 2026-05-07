@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from automake.config import ProjectValidationError, require_config_section
-from automake.media import get_background_music_path
+from automake.media import get_background_music_path, get_media_source
 
 
 @dataclass(frozen=True)
@@ -208,6 +208,17 @@ def build_background_music(music_path: Path, duration: float, volume: float) -> 
     return music.with_duration(duration).with_effects([afx.MultiplyVolume(volume)])
 
 
+def require_scene_duration_and_text(scene: dict[str, Any]) -> tuple[int, str]:
+    duration = scene.get("duration")
+    text = scene.get("text")
+    if not isinstance(duration, int) or duration <= 0:
+        raise ProjectValidationError("Scene duration must be a positive integer.")
+    if not isinstance(text, str) or not text:
+        raise ProjectValidationError("Scene text must be a non-empty string.")
+
+    return duration, text
+
+
 def prepare_scene_clip(
     scene: dict[str, Any],
     clips_dir: Path,
@@ -222,14 +233,9 @@ def prepare_scene_clip(
         ) from error
 
     clip_name = scene.get("clip")
-    duration = scene.get("duration")
-    text = scene.get("text")
+    duration, text = require_scene_duration_and_text(scene)
     if not isinstance(clip_name, str) or not clip_name:
         raise ProjectValidationError("Scene clip must be a non-empty string.")
-    if not isinstance(duration, int) or duration <= 0:
-        raise ProjectValidationError("Scene duration must be a positive integer.")
-    if not isinstance(text, str) or not text:
-        raise ProjectValidationError("Scene text must be a non-empty string.")
 
     clip_path = clips_dir / clip_name
     if not clip_path.is_file():
@@ -250,6 +256,72 @@ def prepare_scene_clip(
     return add_scene_caption(scene_clip, text, width, height, duration)
 
 
+def prepare_generated_scene_clip(
+    scene: dict[str, Any],
+    width: int,
+    height: int,
+) -> Any:
+    try:
+        from moviepy import ColorClip
+    except ImportError as error:
+        raise ProjectValidationError(
+            "MoviePy is not installed. Run: python3 -m pip install -r requirements.txt"
+        ) from error
+
+    duration, text = require_scene_duration_and_text(scene)
+    number = scene.get("number")
+    scene_index = number if isinstance(number, int) and number > 0 else 1
+    palette = [
+        (24, 34, 45),
+        (32, 47, 52),
+        (47, 43, 38),
+        (38, 44, 61),
+        (45, 38, 51),
+    ]
+    color = palette[(scene_index - 1) % len(palette)]
+    base_clip = ColorClip(size=(width, height), color=color, duration=duration)
+    return add_scene_caption(base_clip, text, width, height, duration)
+
+
+def prepare_scene_clips(
+    scenes: list[dict[str, Any]],
+    clips_dir: Path,
+    settings: VideoAssemblySettings,
+    media_source: str,
+) -> list[Any]:
+    if media_source == "generated":
+        return [
+            prepare_generated_scene_clip(scene, settings.width, settings.height)
+            for scene in scenes
+        ]
+
+    if media_source == "local":
+        return [
+            prepare_scene_clip(scene, clips_dir, settings.width, settings.height)
+            for scene in scenes
+        ]
+
+    if media_source == "mixed":
+        generated_clips = []
+        try:
+            for scene in scenes:
+                generated_clips.append(
+                    prepare_generated_scene_clip(scene, settings.width, settings.height)
+                )
+            return generated_clips
+        except ProjectValidationError:
+            for clip in generated_clips:
+                clip.close()
+            return [
+                prepare_scene_clip(scene, clips_dir, settings.width, settings.height)
+                for scene in scenes
+            ]
+
+    raise ProjectValidationError(
+        "Media source must be one of: generated, local, mixed."
+    )
+
+
 def assemble_video(
     scenes_data: dict[str, Any],
     config: dict[str, Any],
@@ -265,6 +337,7 @@ def assemble_video(
         music_dir=paths["music_dir"],
         output_dir=paths["output_dir"],
         settings=get_video_assembly_settings(config),
+        media_source=get_media_source(config),
     )
 
 
@@ -274,6 +347,7 @@ def assemble_video_from_scenes(
     music_dir: Path,
     output_dir: Path,
     settings: VideoAssemblySettings,
+    media_source: str = "local",
 ) -> Path:
     try:
         from moviepy import concatenate_videoclips
@@ -290,10 +364,7 @@ def assemble_video_from_scenes(
     final_clip = None
     background_music = None
     try:
-        scene_clips = [
-            prepare_scene_clip(scene, clips_dir, settings.width, settings.height)
-            for scene in scenes
-        ]
+        scene_clips = prepare_scene_clips(scenes, clips_dir, settings, media_source)
         final_clip = concatenate_videoclips(scene_clips, method="compose")
         music_path = get_background_music_path(music_dir)
         if music_path is not None:

@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from automake.config import ProjectValidationError, load_config, validate_project_paths
+from automake.media import get_media_source
 from automake.plan import load_input_plan, parse_video_plan
 from automake.scenes import generate_scenes, save_scenes
 from automake.script import generate_script, save_script
@@ -14,10 +15,11 @@ def main() -> None:
     try:
         config = load_config(config_path)
         paths = validate_project_paths(project_root, config)
+        media_source = get_media_source(config)
         plan = load_input_plan(paths["input_plan"])
         video_plan = parse_video_plan(plan, config)
         script_path = save_script(generate_script(video_plan), paths["scripts_dir"])
-        scenes_data = generate_scenes(video_plan, paths["clips_dir"])
+        scenes_data = generate_scenes(video_plan, paths["clips_dir"], media_source)
         scenes_path = save_scenes(
             scenes_data,
             paths["scripts_dir"],
@@ -32,6 +34,7 @@ def main() -> None:
     print(f"Plan length: {len(plan)} characters")
     print(f"Topic: {video_plan.topic}")
     print(f"Duration: {video_plan.duration_seconds} seconds")
+    print(f"Media source: {media_source}")
     print(f"Script file: {script_path}")
     print(f"Scenes file: {scenes_path}")
     print(f"Video file: {output_path}")

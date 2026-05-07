@@ -13,7 +13,7 @@ class Scene:
     number: int
     duration: int
     text: str
-    clip: str
+    clip: str | None = None
 
 
 def split_duration(total_duration: int, scene_count: int) -> list[int]:
@@ -60,30 +60,34 @@ def build_scene_texts(video_plan: VideoPlan, scene_count: int) -> list[str]:
     return scene_templates
 
 
-def build_scene_plan(video_plan: VideoPlan, clip_names: list[str]) -> dict[str, Any]:
-    if not clip_names:
-        raise ProjectValidationError("At least one source clip is required.")
-
+def build_scene_plan(
+    video_plan: VideoPlan,
+    clip_names: list[str] | None = None,
+) -> dict[str, Any]:
     scene_count = determine_scene_count(video_plan)
     durations = split_duration(video_plan.duration_seconds, scene_count)
     scene_texts = build_scene_texts(video_plan, scene_count)
 
     scenes = []
     for index, duration in enumerate(durations):
+        clip_name = None
+        if clip_names:
+            clip_name = clip_names[index % len(clip_names)]
+
         scene = Scene(
             number=index + 1,
             duration=duration,
             text=scene_texts[index],
-            clip=clip_names[index % len(clip_names)],
+            clip=clip_name,
         )
-        scenes.append(
-            {
-                "number": scene.number,
-                "duration": scene.duration,
-                "text": scene.text,
-                "clip": scene.clip,
-            }
-        )
+        scene_data: dict[str, Any] = {
+            "number": scene.number,
+            "duration": scene.duration,
+            "text": scene.text,
+        }
+        if scene.clip is not None:
+            scene_data["clip"] = scene.clip
+        scenes.append(scene_data)
 
     return {
         "title": video_plan.topic,
@@ -93,12 +97,18 @@ def build_scene_plan(video_plan: VideoPlan, clip_names: list[str]) -> dict[str, 
     }
 
 
-def generate_scenes(video_plan: VideoPlan, clips_dir: Path) -> dict[str, Any]:
+def generate_scenes(
+    video_plan: VideoPlan,
+    clips_dir: Path,
+    media_source: str = "local",
+) -> dict[str, Any]:
     clip_names = get_clip_names(clips_dir)
-    if not clip_names:
+    if media_source == "local" and not clip_names:
         raise ProjectValidationError(
             f"No .mp4 clips found in {clips_dir}. Add at least one source clip."
         )
+    if media_source == "generated":
+        return build_scene_plan(video_plan)
 
     return build_scene_plan(video_plan, clip_names)
 

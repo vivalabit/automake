@@ -8,6 +8,9 @@
     "music_volume": 0.18,
     "output_filename": "final.mp4"
   },
+  "media": {
+    "source": "local"
+  },
   "paths": {
     "input_plan": "input/plan.txt",
     "clips_dir": "assets/clips",

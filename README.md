@@ -35,6 +35,20 @@ README.md
 - `media.py` finds source clips and music assets.
 - `config.py` loads config and validates project paths.
 
+Media source modes are configured in `config.json`:
+
+```json
+{
+  "media": {
+    "source": "local"
+  }
+}
+```
+
+- `local` uses `.mp4` clips from `assets/clips/`.
+- `generated` creates scene videos from the scene plan.
+- `mixed` tries generated scene videos first, then falls back to local clips.
+
 ## Getting Started
 
 1. Copy `.env.example` to `.env` and fill in required values.
