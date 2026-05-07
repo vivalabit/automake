@@ -5,6 +5,13 @@ Python project for generating short vertical videos from a text plan and local m
 ## Project Structure
 
 ```text
+automake/
+  config.py
+  media.py
+  plan.py
+  scenes.py
+  script.py
+  video_editor.py
 input/
 assets/
   clips/
@@ -18,6 +25,15 @@ requirements.txt
 .gitignore
 README.md
 ```
+
+`main.py` orchestrates the default pipeline. The reusable parts live in `automake/`:
+
+- `plan.py` parses the text plan into a video plan.
+- `script.py` creates and saves the script artifact.
+- `scenes.py` creates and saves scene plans.
+- `video_editor.py` assembles a video from prepared scenes and clips.
+- `media.py` finds source clips and music assets.
+- `config.py` loads config and validates project paths.
 
 ## Getting Started
 
