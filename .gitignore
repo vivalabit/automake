@@ -23,5 +23,7 @@ input/*
 !input/.gitkeep
 assets/clips/*
 !assets/clips/.gitkeep
+assets/generated/*
+!assets/generated/.gitkeep
 assets/music/*
 !assets/music/.gitkeep

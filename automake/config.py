@@ -47,6 +47,7 @@ def validate_project_paths(project_root: Path, config: dict[str, Any]) -> dict[s
     required_path_keys = (
         "input_plan",
         "clips_dir",
+        "generated_dir",
         "music_dir",
         "output_dir",
         "scripts_dir",
@@ -64,7 +65,13 @@ def validate_project_paths(project_root: Path, config: dict[str, Any]) -> dict[s
             raise ProjectValidationError(f"Config path '{key}' must be a string.")
         paths[key] = resolve_project_path(project_root, value)
 
-    required_dirs = ("clips_dir", "music_dir", "output_dir", "scripts_dir")
+    required_dirs = (
+        "clips_dir",
+        "generated_dir",
+        "music_dir",
+        "output_dir",
+        "scripts_dir",
+    )
     missing_dirs = [str(paths[key]) for key in required_dirs if not paths[key].is_dir()]
     if missing_dirs:
         raise ProjectValidationError(

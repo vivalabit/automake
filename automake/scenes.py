@@ -14,6 +14,8 @@ class Scene:
     duration: int
     text: str
     clip: str | None = None
+    prompt: str | None = None
+    fallback_clip: str | None = None
 
 
 def split_duration(total_duration: int, scene_count: int) -> list[int]:
@@ -60,9 +62,21 @@ def build_scene_texts(video_plan: VideoPlan, scene_count: int) -> list[str]:
     return scene_templates
 
 
+def build_scene_prompt(video_plan: VideoPlan, scene_text: str) -> str:
+    return (
+        f"Fast energetic vertical video about {video_plan.topic}. "
+        f"Style: {video_plan.style}. Scene: {scene_text}"
+    )
+
+
+def get_generated_clip_name(scene_number: int) -> str:
+    return f"generated/scene_{scene_number:02d}.mp4"
+
+
 def build_scene_plan(
     video_plan: VideoPlan,
     clip_names: list[str] | None = None,
+    use_generated_assets: bool = False,
 ) -> dict[str, Any]:
     scene_count = determine_scene_count(video_plan)
     durations = split_duration(video_plan.duration_seconds, scene_count)
@@ -70,23 +84,36 @@ def build_scene_plan(
 
     scenes = []
     for index, duration in enumerate(durations):
+        scene_number = index + 1
         clip_name = None
+        prompt = None
+        fallback_clip = None
         if clip_names:
             clip_name = clip_names[index % len(clip_names)]
+        if use_generated_assets:
+            fallback_clip = clip_name
+            clip_name = get_generated_clip_name(scene_number)
+            prompt = build_scene_prompt(video_plan, scene_texts[index])
 
         scene = Scene(
-            number=index + 1,
+            number=scene_number,
             duration=duration,
             text=scene_texts[index],
             clip=clip_name,
+            prompt=prompt,
+            fallback_clip=fallback_clip,
         )
         scene_data: dict[str, Any] = {
             "number": scene.number,
             "duration": scene.duration,
             "text": scene.text,
         }
+        if scene.prompt is not None:
+            scene_data["prompt"] = scene.prompt
         if scene.clip is not None:
             scene_data["clip"] = scene.clip
+        if scene.fallback_clip is not None:
+            scene_data["fallback_clip"] = scene.fallback_clip
         scenes.append(scene_data)
 
     return {
@@ -108,9 +135,13 @@ def generate_scenes(
             f"No .mp4 clips found in {clips_dir}. Add at least one source clip."
         )
     if media_source == "generated":
-        return build_scene_plan(video_plan)
+        return build_scene_plan(video_plan, use_generated_assets=True)
 
-    return build_scene_plan(video_plan, clip_names)
+    return build_scene_plan(
+        video_plan,
+        clip_names,
+        use_generated_assets=media_source == "mixed",
+    )
 
 
 def save_scenes(scenes_data: dict[str, Any], scripts_dir: Path) -> Path:

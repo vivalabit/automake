@@ -14,6 +14,7 @@
   "paths": {
     "input_plan": "input/plan.txt",
     "clips_dir": "assets/clips",
+    "generated_dir": "assets/generated",
     "music_dir": "assets/music",
     "output_dir": "output",
     "scripts_dir": "scripts"

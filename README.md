@@ -15,6 +15,7 @@ automake/
 input/
 assets/
   clips/
+  generated/
   music/
 output/
 scripts/
@@ -46,7 +47,7 @@ Media source modes are configured in `config.json`:
 ```
 
 - `local` uses `.mp4` clips from `assets/clips/`.
-- `generated` creates scene videos from the scene plan.
+- `generated` creates scene videos in `assets/generated/` and references them as `generated/scene_01.mp4`.
 - `mixed` tries generated scene videos first, then falls back to local clips.
 
 ## Getting Started
