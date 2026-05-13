@@ -31,7 +31,7 @@ README.md
 
 - `plan.py` parses the text plan into a video plan.
 - `script.py` creates and saves the script artifact.
-- `scenes.py` creates and saves scene plans.
+- `scenes.py` creates and saves scene plans with video-generation prompts.
 - `video_editor.py` assembles a video from prepared scenes and clips.
 - `media.py` finds source clips and music assets.
 - `config.py` loads config and validates project paths.
@@ -49,6 +49,10 @@ Media source modes are configured in `config.json`:
 - `local` uses `.mp4` clips from `assets/clips/`.
 - `generated` creates scene videos in `assets/generated/` and references them as `generated/scene_01.mp4`.
 - `mixed` tries generated scene videos first, then falls back to local clips.
+
+Each scene includes a visual `prompt` for video generation. Prompts describe the shot
+and motion, while on-screen text is handled by Automake captions instead of the
+generated video.
 
 ## Getting Started
 

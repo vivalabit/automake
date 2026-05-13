@@ -62,10 +62,61 @@ def build_scene_texts(video_plan: VideoPlan, scene_count: int) -> list[str]:
     return scene_templates
 
 
-def build_scene_prompt(video_plan: VideoPlan, scene_text: str) -> str:
+def infer_visual_subject(video_plan: VideoPlan, scene_text: str) -> str:
+    scene_source = scene_text.casefold()
+    topic_source = video_plan.topic.casefold()
+
+    if (
+        ("длин" in scene_source and "начал" in scene_source)
+        or "long intro" in scene_source
+    ):
+        return (
+            "close-up of a beginner editing timeline, cutting a long intro into "
+            "quick clips"
+        )
+    if "важно" in scene_source or "сейчас" in scene_source:
+        return (
+            "creator rapidly improving a vertical video edit while audience "
+            "attention drops"
+        )
+    if "пример" in scene_source:
+        return (
+            "hands trimming dead air from a vertical video timeline, quick "
+            "before-and-after pacing demonstration"
+        )
+    if "пункт" in scene_source:
+        return "hands making three precise cuts in a vertical video timeline"
+    if (
+        "действ" in scene_source
+        or "сохрани" in scene_source
+        or "финал" in scene_source
+    ):
+        return (
+            "creator exporting a polished vertical video after organizing clips "
+            "on an editing timeline"
+        )
+    if "ошиб" in scene_source and (
+        "монтаж" in topic_source or "editing" in topic_source
+    ):
+        return (
+            "close-up of a beginner editing timeline, fixing common editing "
+            "mistakes"
+        )
+    if "монтаж" in topic_source or "editing" in topic_source:
+        return "hands editing a vertical social media video on a modern timeline"
+
     return (
-        f"Fast energetic vertical video about {video_plan.topic}. "
-        f"Style: {video_plan.style}. Scene: {scene_text}"
+        "cinematic b-roll visualizing the scene idea with a creator working on "
+        "a vertical video"
+    )
+
+
+def build_scene_prompt(video_plan: VideoPlan, scene_text: str) -> str:
+    subject = infer_visual_subject(video_plan, scene_text)
+    return (
+        "Vertical 9:16 short video, fast energetic editing, "
+        f"{subject}, dynamic camera movement, realistic modern workspace, "
+        "no text on screen, no captions, no subtitles, no readable letters, no logos"
     )
 
 
@@ -86,14 +137,13 @@ def build_scene_plan(
     for index, duration in enumerate(durations):
         scene_number = index + 1
         clip_name = None
-        prompt = None
+        prompt = build_scene_prompt(video_plan, scene_texts[index])
         fallback_clip = None
         if clip_names:
             clip_name = clip_names[index % len(clip_names)]
         if use_generated_assets:
             fallback_clip = clip_name
             clip_name = get_generated_clip_name(scene_number)
-            prompt = build_scene_prompt(video_plan, scene_texts[index])
 
         scene = Scene(
             number=scene_number,
