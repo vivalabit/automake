@@ -11,6 +11,7 @@ automake/
   plan.py
   scenes.py
   script.py
+  video_generator.py
   video_editor.py
 input/
 assets/
@@ -32,6 +33,7 @@ README.md
 - `plan.py` parses the text plan into a video plan.
 - `script.py` creates and saves the script artifact.
 - `scenes.py` creates and saves scene plans with video-generation prompts.
+- `video_generator.py` defines the video provider interface and dummy provider.
 - `video_editor.py` assembles a video from prepared scenes and clips.
 - `media.py` finds source clips and music assets.
 - `config.py` loads config and validates project paths.
@@ -53,6 +55,9 @@ Media source modes are configured in `config.json`:
 Each scene includes a visual `prompt` for video generation. Prompts describe the shot
 and motion, while on-screen text is handled by Automake captions instead of the
 generated video.
+
+`DummyVideoGenerator` creates simple color placeholder videos so generated and mixed
+pipelines can run without a paid video-generation API.
 
 ## Getting Started
 

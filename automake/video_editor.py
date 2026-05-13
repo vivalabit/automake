@@ -6,6 +6,7 @@ from typing import Any
 
 from automake.config import ProjectValidationError, require_config_section
 from automake.media import get_background_music_path, get_media_source
+from automake.video_generator import DummyVideoGenerator, VideoGenerator
 
 
 @dataclass(frozen=True)
@@ -266,77 +267,20 @@ def prepare_scene_clip(
     return add_scene_caption(scene_clip, text, width, height, duration)
 
 
-def get_generated_scene_asset_path(scene: dict[str, Any], generated_dir: Path) -> Path:
-    clip_name = scene.get("clip")
-    if isinstance(clip_name, str) and clip_name:
-        clip_path = Path(clip_name)
-        if clip_path.is_absolute():
-            return clip_path
-        if clip_path.parts and clip_path.parts[0] == "generated":
-            return generated_dir / Path(*clip_path.parts[1:])
-        return generated_dir / clip_path.name
-
-    number = scene.get("number")
-    scene_number = number if isinstance(number, int) and number > 0 else 1
-    return generated_dir / f"scene_{scene_number:02d}.mp4"
-
-
-def render_generated_scene_asset(
-    scene: dict[str, Any],
-    generated_dir: Path,
-    settings: VideoAssemblySettings,
-) -> Path:
-    try:
-        from moviepy import ColorClip
-    except ImportError as error:
-        raise ProjectValidationError(
-            "MoviePy is not installed. Run: python3 -m pip install -r requirements.txt"
-        ) from error
-
-    duration, _ = require_scene_duration_and_text(scene)
-    number = scene.get("number")
-    scene_index = number if isinstance(number, int) and number > 0 else 1
-    palette = [
-        (24, 34, 45),
-        (32, 47, 52),
-        (47, 43, 38),
-        (38, 44, 61),
-        (45, 38, 51),
-    ]
-    color = palette[(scene_index - 1) % len(palette)]
-    output_path = get_generated_scene_asset_path(scene, generated_dir)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-
-    base_clip = ColorClip(
-        size=(settings.width, settings.height),
-        color=color,
-        duration=duration,
-    )
-    try:
-        base_clip.write_videofile(
-            str(output_path),
-            fps=settings.fps,
-            codec="libx264",
-            audio=False,
-            preset="medium",
-            threads=4,
-            logger=None,
-            pixel_format="yuv420p",
-        )
-    finally:
-        base_clip.close()
-
-    return output_path
-
-
 def prepare_generated_scene_clip(
     scene: dict[str, Any],
     clips_dir: Path,
-    generated_dir: Path,
+    video_generator: VideoGenerator,
     settings: VideoAssemblySettings,
 ) -> Any:
-    render_generated_scene_asset(scene, generated_dir, settings)
-    return prepare_scene_clip(scene, clips_dir, settings.width, settings.height)
+    generated_scene = dict(scene)
+    generated_scene["clip"] = str(video_generator.generate_scene(scene))
+    return prepare_scene_clip(
+        generated_scene,
+        clips_dir,
+        settings.width,
+        settings.height,
+    )
 
 
 def get_local_fallback_scene(scene: dict[str, Any]) -> dict[str, Any]:
@@ -352,13 +296,13 @@ def get_local_fallback_scene(scene: dict[str, Any]) -> dict[str, Any]:
 def prepare_scene_clips(
     scenes: list[dict[str, Any]],
     clips_dir: Path,
-    generated_dir: Path,
+    video_generator: VideoGenerator,
     settings: VideoAssemblySettings,
     media_source: str,
 ) -> list[Any]:
     if media_source == "generated":
         return [
-            prepare_generated_scene_clip(scene, clips_dir, generated_dir, settings)
+            prepare_generated_scene_clip(scene, clips_dir, video_generator, settings)
             for scene in scenes
         ]
 
@@ -376,12 +320,12 @@ def prepare_scene_clips(
                     prepare_generated_scene_clip(
                         scene,
                         clips_dir,
-                        generated_dir,
+                        video_generator,
                         settings,
                     )
                 )
             return generated_clips
-        except ProjectValidationError:
+        except Exception:
             for clip in generated_clips:
                 clip.close()
             return [
@@ -427,6 +371,7 @@ def assemble_video_from_scenes(
     settings: VideoAssemblySettings,
     media_source: str = "local",
     generated_dir: Path | None = None,
+    video_generator: VideoGenerator | None = None,
 ) -> Path:
     try:
         from moviepy import concatenate_videoclips
@@ -439,6 +384,12 @@ def assemble_video_from_scenes(
         raise ProjectValidationError("No scenes available for video assembly.")
 
     resolved_generated_dir = generated_dir or clips_dir.parent / "generated"
+    resolved_video_generator = video_generator or DummyVideoGenerator(
+        generated_dir=resolved_generated_dir,
+        width=settings.width,
+        height=settings.height,
+        fps=settings.fps,
+    )
     output_path = output_dir / settings.output_filename
     scene_clips = []
     final_clip = None
@@ -447,7 +398,7 @@ def assemble_video_from_scenes(
         scene_clips = prepare_scene_clips(
             scenes,
             clips_dir,
-            resolved_generated_dir,
+            resolved_video_generator,
             settings,
             media_source,
         )
